@@ -1,0 +1,340 @@
+# ============================================================
+#  Metronix — Smart Urban Life Assistant
+#  .gitignore
+#  Author: Ravi Kumar | Roll No: 25CSM1R17
+# ============================================================
+
+
+# ──────────────────────────────────────────────────────────────
+# ENVIRONMENT & SECRETS  ⚠️  NEVER COMMIT THESE!
+# ──────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+*.env
+
+# Secret key files
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+serviceAccountKey.json
+firebase-adminsdk*.json
+gcs-keyfile.json
+*-credentials.json
+
+
+# ──────────────────────────────────────────────────────────────
+# NODE.JS
+# ──────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+package-lock.json.bak
+yarn.lock.bak
+
+
+# ──────────────────────────────────────────────────────────────
+# BUILD OUTPUTS
+# ──────────────────────────────────────────────────────────────
+dist/
+dist-ssr/
+build/
+.build/
+out/
+output/
+*.local
+frontend/dist/
+backend/dist/
+
+
+# ──────────────────────────────────────────────────────────────
+# PYTHON / ML SERVICE
+# ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.eggs/
+
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# ML Artifacts — Large trained models (use Git LFS or cloud storage)
+ml/saved_models/*.h5
+ml/saved_models/*.pkl
+ml/saved_models/*.pt
+ml/saved_models/*.pth
+ml/saved_models/*.onnx
+ml/saved_models/*.zip
+ml/saved_models/*.joblib
+
+# Training data (usually too large for git)
+ml/data/raw/
+ml/data/processed/
+ml/data/*.csv
+ml/data/*.parquet
+ml/data/*.json
+
+# Experiment tracking
+mlruns/
+.mlflow/
+wandb/
+lightning_logs/
+
+
+# ──────────────────────────────────────────────────────────────
+# DATABASE
+# ──────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.sql.gz
+*.dump
+
+# Database dumps
+db-dumps/
+backups/
+*.backup
+
+# PostgreSQL
+postgresql/data/
+
+# MongoDB
+mongodb/data/
+
+
+# ──────────────────────────────────────────────────────────────
+# DOCKER
+# ──────────────────────────────────────────────────────────────
+# Keep docker-compose files but ignore override
+docker-compose.override.yml
+
+# Docker volumes (local dev)
+.docker/
+
+
+# ──────────────────────────────────────────────────────────────
+# LOGS
+# ──────────────────────────────────────────────────────────────
+logs/
+*.log
+*.log.*
+log/
+npm-debug.log
+yarn-debug.log
+
+# PM2 logs
+.pm2/
+
+
+# ──────────────────────────────────────────────────────────────
+# UPLOADS & MEDIA
+# ──────────────────────────────────────────────────────────────
+uploads/
+media/
+public/uploads/
+backend/uploads/
+
+# Keep placeholder
+!uploads/.gitkeep
+!media/.gitkeep
+
+
+# ──────────────────────────────────────────────────────────────
+# TESTING
+# ──────────────────────────────────────────────────────────────
+coverage/
+.coverage
+.coverage.*
+htmlcov/
+.nyc_output/
+*.lcov
+.jest-cache/
+test-results/
+junit.xml
+
+
+# ──────────────────────────────────────────────────────────────
+# IDE & EDITOR
+# ──────────────────────────────────────────────────────────────
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+*.code-workspace
+
+# JetBrains (WebStorm, PyCharm, IntelliJ)
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+
+
+# ──────────────────────────────────────────────────────────────
+# OS GENERATED
+# ──────────────────────────────────────────────────────────────
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+
+# ──────────────────────────────────────────────────────────────
+# TERRAFORM / INFRASTRUCTURE
+# ──────────────────────────────────────────────────────────────
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/crash.log
+infra/terraform/crash.*.log
+infra/terraform/*.tfvars
+infra/terraform/*.tfvars.json
+infra/terraform/override.tf
+infra/terraform/override.tf.json
+infra/terraform/*_override.tf
+infra/terraform/*_override.tf.json
+infra/terraform/.terraformrc
+infra/terraform/terraform.rc
+
+# Kubernetes secrets
+infra/kubernetes/*-secret.yaml
+infra/kubernetes/*-secrets.yaml
+
+
+# ──────────────────────────────────────────────────────────────
+# CERTIFICATES & SSL
+# ──────────────────────────────────────────────────────────────
+infra/nginx/ssl/
+ssl/
+certs/
+*.crt
+*.pem
+*.key
+!*.example.key
+
+
+# ──────────────────────────────────────────────────────────────
+# CACHE
+# ──────────────────────────────────────────────────────────────
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vite/
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+.prettier-cache
+
+
+# ──────────────────────────────────────────────────────────────
+# MISC
+# ──────────────────────────────────────────────────────────────
+*.pid
+*.seed
+*.pid.lock
+.node_repl_history
+.yarn-integrity
+.env.test
+.tern-port
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+.clinic/
+strace-pid/

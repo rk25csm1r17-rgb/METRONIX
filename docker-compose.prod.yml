@@ -1,0 +1,268 @@
+# ============================================================
+#  Metronix — Smart Urban Life Assistant
+#  docker-compose.prod.yml  (Production Override)
+#  Author: Ravi Kumar | Roll No: 25CSM1R17
+#
+#  Usage:
+#    docker-compose -f docker-compose.yml \
+#                   -f docker-compose.prod.yml up -d
+# ============================================================
+
+version: '3.9'
+
+services:
+
+  # ── Frontend — Production Build ────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../infra/docker/Dockerfile.frontend
+      target: production
+      args:
+        - NODE_ENV=production
+        - VITE_API_URL=${PROD_API_URL}
+        - VITE_WS_URL=${PROD_WS_URL}
+        - VITE_MAPBOX_TOKEN=${MAPBOX_TOKEN}
+    restart: always
+    ports: []               # No direct port exposure in prod (Nginx handles)
+    volumes: []             # No bind mounts in prod (image is self-contained)
+    environment:
+      - NODE_ENV=production
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # ── Backend — Production Config ────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../infra/docker/Dockerfile.backend
+      target: production
+    restart: always
+    ports: []
+    volumes: []
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=warn
+      - TRUST_PROXY=1
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # ── ML Service — Production Config ────────────────────────
+  ml-service:
+    build:
+      context: ./ml
+      dockerfile: ../infra/docker/Dockerfile.ml
+      target: production
+    restart: always
+    ports: []
+    volumes:
+      - ml-models:/app/saved_models          # Persist trained models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=warning
+      - WORKERS=4                             # Multiple uvicorn workers
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+
+  # ── PostgreSQL — Production Config ────────────────────────
+  postgres:
+    restart: always
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      # Performance tuning
+      - POSTGRES_EXTRA_OPTS=-c shared_buffers=256MB -c max_connections=200
+    ports: []               # No external access in prod
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c maintenance_work_mem=64MB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=16MB
+        -c default_statistics_target=100
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c max_connections=200
+        -c log_min_duration_statement=1000
+        -c log_connections=on
+
+  # ── MongoDB — Production Config ────────────────────────────
+  mongodb:
+    restart: always
+    ports: []
+    command: >
+      mongod
+        --wiredTigerCacheSizeGB 1
+        --bind_ip_all
+        --auth
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  # ── Redis — Production Config ──────────────────────────────
+  redis:
+    restart: always
+    ports: []
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+
+  # ── Nginx — Production TLS ─────────────────────────────────
+  nginx:
+    restart: always
+    volumes:
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d/prod:/etc/nginx/conf.d:ro
+      - nginx-certs:/etc/nginx/ssl:ro
+      - certbot-webroot:/var/www/certbot:ro
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  # ── Certbot — SSL Certificate Renewal ─────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    container_name: metronix-certbot
+    restart: unless-stopped
+    volumes:
+      - nginx-certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do
+               certbot renew --webroot -w /var/www/certbot --quiet;
+               sleep 12h & wait $${!};
+             done;"
+    networks:
+      - metronix-network
+
+  # ── Watchtower — Auto Update Containers ───────────────────
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: metronix-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600      # Check every 1 hour
+      - WATCHTOWER_NOTIFICATIONS=slack
+      - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK_URL}
+    networks:
+      - metronix-network
+    profiles:
+      - prod-tools
+
+  # ── Remove Dev-Only Services ───────────────────────────────
+  adminer:
+    deploy:
+      replicas: 0          # Disable in production
+
+  mongo-express:
+    deploy:
+      replicas: 0
+
+  redis-commander:
+    deploy:
+      replicas: 0
+
+# ── Production Volumes ────────────────────────────────────────
+volumes:
+  certbot-webroot:
+    driver: local
+  postgres-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/metronix/data/postgres
+  mongodb-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/metronix/data/mongodb
+  redis-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/metronix/data/redis

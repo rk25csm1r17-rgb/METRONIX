@@ -1,0 +1,307 @@
+# ============================================================
+#  Metronix — Smart Urban Life Assistant
+#  docker-compose.yml  (Development)
+#  Author: Ravi Kumar | Roll No: 25CSM1R17
+# ============================================================
+
+version: '3.9'
+
+# ── Shared Networks ──────────────────────────────────────────
+networks:
+  metronix-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ── Named Volumes ────────────────────────────────────────────
+volumes:
+  postgres-data:
+    driver: local
+  mongodb-data:
+    driver: local
+  redis-data:
+    driver: local
+  influxdb-data:
+    driver: local
+  ml-models:
+    driver: local
+  nginx-certs:
+    driver: local
+
+# ── Services ─────────────────────────────────────────────────
+services:
+
+  # ── Frontend — React + Vite ────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../infra/docker/Dockerfile.frontend
+      args:
+        - NODE_ENV=development
+    container_name: metronix-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:5000/api/v1
+      - VITE_WS_URL=ws://localhost:5000
+      - VITE_MAPBOX_TOKEN=${MAPBOX_TOKEN}
+      - VITE_GOOGLE_MAPS_KEY=${GOOGLE_MAPS_KEY}
+    depends_on:
+      - backend
+    networks:
+      - metronix-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Backend — Node.js + Express ───────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../infra/docker/Dockerfile.backend
+    container_name: metronix-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGODB_URI=${MONGODB_URI}
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8000
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - AIRVISUAL_API_KEY=${AIRVISUAL_API_KEY}
+      - TOMTOM_TRAFFIC_KEY=${TOMTOM_TRAFFIC_KEY}
+      - IQAIR_API_KEY=${IQAIR_API_KEY}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - FRONTEND_URL=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - metronix-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── ML Service — FastAPI + Python ─────────────────────────
+  ml-service:
+    build:
+      context: ./ml
+      dockerfile: ../infra/docker/Dockerfile.ml
+    container_name: metronix-ml
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml:/app
+      - ml-models:/app/saved_models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODEL_PATH=/app/saved_models
+      - REDIS_URL=redis://redis:6379/1
+      - LOG_LEVEL=info
+      - WORKERS=2
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - metronix-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # ── PostgreSQL — Relational DB ─────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: metronix-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/config/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-metronix}
+      - POSTGRES_USER=${POSTGRES_USER:-metronix_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    networks:
+      - metronix-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-metronix_user} -d ${POSTGRES_DB:-metronix}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── MongoDB — Document DB ─────────────────────────────────
+  mongodb:
+    image: mongo:7-jammy
+    container_name: metronix-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - ./backend/config/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DB:-metronix}
+    networks:
+      - metronix-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Redis — Cache + Pub/Sub ────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: metronix-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD}
+    networks:
+      - metronix-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ── InfluxDB — Time-Series DB ──────────────────────────────
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: metronix-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUX_USERNAME:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG:-metronix}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-city_data}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
+    networks:
+      - metronix-network
+
+  # ── Nginx — Reverse Proxy ──────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: metronix-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx-certs:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - metronix-network
+
+  # ── Adminer — DB GUI (Dev Only) ────────────────────────────
+  adminer:
+    image: adminer:4.8.1
+    container_name: metronix-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+      - ADMINER_DESIGN=nette
+    depends_on:
+      - postgres
+    networks:
+      - metronix-network
+    profiles:
+      - dev-tools
+
+  # ── Mongo Express — Mongo GUI (Dev Only) ───────────────────
+  mongo-express:
+    image: mongo-express:1.0.2-20
+    container_name: metronix-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGO_ROOT_USER:-admin}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGO_ROOT_PASSWORD}
+      - ME_CONFIG_MONGODB_URL=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=${ME_USERNAME:-admin}
+      - ME_CONFIG_BASICAUTH_PASSWORD=${ME_PASSWORD:-password}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - metronix-network
+    profiles:
+      - dev-tools
+
+  # ── Redis Commander — Redis GUI (Dev Only) ─────────────────
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: metronix-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:${REDIS_PASSWORD}
+      - HTTP_USER=${REDIS_COMMANDER_USER:-admin}
+      - HTTP_PASSWORD=${REDIS_COMMANDER_PASS:-password}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - metronix-network
+    profiles:
+      - dev-tools
